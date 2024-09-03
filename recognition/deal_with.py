@@ -16,7 +16,7 @@ def detect_and_save_person(image):
         for (x, y, w, h) in boxes:
             cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 2)
         # 儲存帶有檢測結果的圖像
-        output_file = 'recognition/img/detected_person.png'
+        output_file = 'recognition/img/deal.png'
         cv2.imwrite(output_file, image)
         print(f"檢測結果已保存為 '{output_file}'")
     else:
@@ -24,10 +24,33 @@ def detect_and_save_person(image):
 
 if __name__ == "__main__":
     # 讀取截圖圖像
-    input_image_path = 'recognition/img/captured_image.png'
+    input_image_path = 'recognition/img/image.png'
     image = cv2.imread(input_image_path)
 
     if image is not None:
+        # 保存截圖
+        captured_image_path = 'recognition/img/captured_image.png'
+        cv2.imwrite(captured_image_path, image)
+        print(f"截圖已保存為 '{captured_image_path}'")
+    
+        # 顯示原始圖像
+        cv2.imshow('Original Image', image)
+        cv2.waitKey(0)  # 等待按鍵事件
+        cv2.destroyAllWindows()
+
+        # 檢測並保存人像
         detect_and_save_person(image)
+
+        # 讀取處理後的圖像
+        processed_image_path = 'recognition/img/deal.png'
+        processed_image = cv2.imread(processed_image_path)
+
+        if processed_image is not None:
+            # 顯示處理後的圖像
+            cv2.imshow('Processed Image', processed_image)
+            cv2.waitKey(0)  # 等待按鍵事件
+            cv2.destroyAllWindows()
+        else:
+            print("無法讀取處理後的圖像")
     else:
-        print("無法讀取截圖圖像")
+        print("無法擷取截圖。")
