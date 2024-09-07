@@ -1,0 +1,25 @@
+#include <Mouse.h>
+
+void setup() {
+  Serial.begin(9600);
+  Mouse.begin();
+}
+
+void loop() {
+  if (Serial.available() > 0) {
+    String data = Serial.readStringUntil('\n');
+    int commaIndex = data.indexOf(',');
+    if (commaIndex > 0) {
+      int x = data.substring(0, commaIndex).toInt();
+      int y = data.substring(commaIndex + 1).toInt();
+      moveMouse(x, y);
+    }
+  }
+}
+
+void moveMouse(int x, int y) {
+  // 將螢幕座標轉換為滑鼠移動量
+  int moveX = map(x, 0, 1920, -960, 960); // 根據螢幕解析度調整
+  int moveY = map(y, 0, 1080, -540, 540); // 根據螢幕解析度調整
+  Mouse.move(moveX, moveY);
+}
