@@ -107,14 +107,43 @@ def capture_screenshot():
     screenshot = cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR)
     return screenshot
 
-def is_target_person(landmarks):
+def is_target_person(image, landmarks):
     """判斷是否為目標人像"""
-    # 這裡可以根據具體條件來判斷，例如檢查某些關鍵點的位置或距離
-    # 這裡假設如果鼻子和左眼的距離小於某個閾值，則認為是目標人像
-    nose = landmarks.landmark[mp_pose.PoseLandmark.NOSE]
-    left_eye = landmarks.landmark[mp_pose.PoseLandmark.LEFT_EYE]
-    distance = ((nose.x - left_eye.x) ** 2 + (nose.y - left_eye.y) ** 2) ** 0.5
-    return distance < 0.1  # 根據需要調整閾值
+    if not landmarks:
+        return False
+
+    # 將圖像轉換為 HSV 色彩空間
+    hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+
+    # 定義紅色的 HSV 範圍
+    lower_red = np.array([0, 120, 70])
+    upper_red = np.array([10, 255, 255])
+    mask1 = cv2.inRange(hsv_image, lower_red, upper_red)
+
+    lower_red = np.array([170, 120, 70])
+    upper_red = np.array([180, 255, 255])
+    mask2 = cv2.inRange(hsv_image, lower_red, upper_red)
+
+    # 合併兩個紅色範圍的掩碼
+    red_mask = mask1 + mask2
+
+    # 找到紅色區域的輪廓
+    contours, _ = cv2.findContours(red_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    # 獲取人體框的邊界
+    x_coords = [int(landmark.x * image.shape[1]) for landmark in landmarks.landmark]
+    y_coords = [int(landmark.y * image.shape[0]) for landmark in landmarks.landmark]
+    min_x, max_x = min(x_coords), max(x_coords)
+    min_y, max_y = min(y_coords), max(y_coords)
+
+    # 檢查紅色區域是否在人體框內
+    for contour in contours:
+        for point in contour:
+            x, y = point[0]
+            if min_x <= x <= max_x and min_y <= y <= max_y:
+                return True
+
+    return False
 
 def send_position_to_arduino(x, y):
     """通過串口將位置發送給 Arduino"""
