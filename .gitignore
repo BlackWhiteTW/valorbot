@@ -1,13 +1,6 @@
 recognition/img
 recognition/train
 test/test
-yolov5
-
-
-
-
-
-
 
 ### img
 dataset/images/train/*/*.png
