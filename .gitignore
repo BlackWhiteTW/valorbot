@@ -9,9 +9,11 @@ test/test
 
 
 ### img
-dataset/images/train/*/*
-dataset/images/val/*/*
+dataset/images/train/*/*.png
+dataset/images/train/*/*.jpg
+dataset/images/val/*/*.png
+dataset/images/val/*/*.jpg
 
 ### txt
-dataset/labels/train/*/*
-dataset/labels/val/*/*
+# dataset/labels/train/*/*.txt
+# dataset/labels/val/*/*.txt
