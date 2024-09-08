@@ -2,3 +2,16 @@ recognition/img
 recognition/train
 test/test
 
+
+
+
+
+
+
+### img
+dataset/images/train/*/*
+dataset/images/val/*/*
+
+### txt
+dataset/labels/train/*/*
+dataset/labels/val/*/*
