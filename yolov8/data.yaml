@@ -1,0 +1,5 @@
+train: C:/Users/91314/Documents/GitHub/valorbot/dataset/images/train
+val: C:/Users/91314/Documents/GitHub/valorbot/dataset/images/val
+
+nc: 1
+names: ['bot']
