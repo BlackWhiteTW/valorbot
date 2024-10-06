@@ -1,147 +1,140 @@
 import cv2
-import mediapipe as mp
+import torch
 import os
-import time
 import numpy as np
-import ctypes
-from PIL import ImageGrab
+import time
+from ultralytics import YOLO
+import win32gui
+import win32ui
+import win32con
+import win32api
 
-mp_pose = mp.solutions.pose
-pose = mp_pose.Pose()
-mp_drawing = mp.solutions.drawing_utils
+def get_window_rect(window_name):
+    hwnd = win32gui.FindWindow(None, window_name)
+    if hwnd:
+        rect = win32gui.GetWindowRect(hwnd)
+        return rect
+    else:
+        raise Exception(f"Window with name '{window_name}' not found")
 
-# 初始化成功辨識次數計數器
-success_count = 0
+def capture_window(window_name):
+    rect = get_window_rect(window_name)
+    x1, y1, x2, y2 = rect
+    width = x2 - x1
+    height = y2 - y1
 
-def detect_pose(image):
-    """檢測圖像中的人體架構，並返回頭部的關鍵點座標"""
-    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    results = pose.process(image_rgb)
-    landmarks = results.pose_landmarks
+    hwnd = win32gui.FindWindow(None, window_name)
+    wDC = win32gui.GetWindowDC(hwnd)
+    dcObj = win32ui.CreateDCFromHandle(wDC)
+    cDC = dcObj.CreateCompatibleDC()
+    dataBitMap = win32ui.CreateBitmap()
+    dataBitMap.CreateCompatibleBitmap(dcObj, width, height)
+    cDC.SelectObject(dataBitMap)
+    cDC.BitBlt((0, 0), (width, height), dcObj, (0, 0), win32con.SRCCOPY)
 
-    head_points = {}
-    if landmarks:
-        image_height, image_width, _ = image.shape
-        # 提取頭部的關鍵點座標，並轉換為像素座標
-        head_points['nose'] = (int(landmarks.landmark[mp_pose.PoseLandmark.NOSE].x * image_width),
-                               int(landmarks.landmark[mp_pose.PoseLandmark.NOSE].y * image_height))
-        head_points['left_eye'] = (int(landmarks.landmark[mp_pose.PoseLandmark.LEFT_EYE].x * image_width),
-                                   int(landmarks.landmark[mp_pose.PoseLandmark.LEFT_EYE].y * image_height))
-        head_points['right_eye'] = (int(landmarks.landmark[mp_pose.PoseLandmark.RIGHT_EYE].x * image_width),
-                                    int(landmarks.landmark[mp_pose.PoseLandmark.RIGHT_EYE].y * image_height))
-        head_points['left_ear'] = (int(landmarks.landmark[mp_pose.PoseLandmark.LEFT_EAR].x * image_width),
-                                   int(landmarks.landmark[mp_pose.PoseLandmark.LEFT_EAR].y * image_height))
-        head_points['right_ear'] = (int(landmarks.landmark[mp_pose.PoseLandmark.RIGHT_EAR].x * image_width),
-                                    int(landmarks.landmark[mp_pose.PoseLandmark.RIGHT_EAR].y * image_height))
-    
-    return landmarks, head_points
+    signedIntsArray = dataBitMap.GetBitmapBits(True)
+    img = np.frombuffer(signedIntsArray, dtype='uint8')
+    img.shape = (height, width, 4)
 
-def draw_pose(image, landmarks, head_points, is_target):
-    """在圖像上繪製人體架構並標出頭部中心點和綠色框"""
-    # 計算頭部中心點
-    center_x, center_y = None, None
-    if head_points:
-        x_coords = [coord[0] for coord in head_points.values()]
-        y_coords = [coord[1] for coord in head_points.values()]
-        center_x = int(sum(x_coords) / len(x_coords))
-        center_y = int(sum(y_coords) / len(y_coords))
-        
-        # 在圖像上繪製頭部紅色點
-        cv2.circle(image, (center_x, center_y), 5, (0, 0, 255), -1)
-    
-    # 繪製綠色的框框住整個身體
-    if landmarks:
-        x_coords = [int(landmark.x * image.shape[1]) for landmark in landmarks.landmark]
-        y_coords = [int(landmark.y * image.shape[0]) for landmark in landmarks.landmark]
-        min_x, max_x = min(x_coords), max(x_coords)
-        min_y, max_y = min(y_coords), max(y_coords)
-        cv2.rectangle(image, (min_x, min_y), (max_x, max_y), (0, 255, 0), 2)
-        
-        # 如果是目標人像，繪製部分紅框
-        if is_target:
-            cv2.rectangle(image, (min_x, min_y), (max_x, max_y), (0, 0, 255), 2)
-    
-    return image, (center_x, center_y) if is_target else None
+    dcObj.DeleteDC()
+    cDC.DeleteDC()
+    win32gui.ReleaseDC(hwnd, wDC)
+    win32gui.DeleteObject(dataBitMap.GetHandle())
 
-def convert_to_screen_coordinates(head_points, screen_width, screen_height, image_width, image_height):
-    """將頭部關鍵點座標轉換為螢幕上的像素座標"""
-    screen_points = {}
-    for point, (x, y) in head_points.items():
-        screen_x = int(x * screen_width / image_width)
-        screen_y = int(y * screen_height / image_height)
-        screen_points[point] = (screen_x, screen_y)
-    return screen_points
+    img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+    return img
 
-def capture_screenshot():
-    """捕捉螢幕畫面並轉換為OpenCV格式"""
-    screenshot = ImageGrab.grab()
-    screenshot = np.array(screenshot)
-    screenshot = cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR)
-    return screenshot
+def list_windows():
+    def enum_handler(hwnd, result):
+        if win32gui.IsWindowVisible(hwnd):
+            window_text = win32gui.GetWindowText(hwnd)
+            if window_text:
+                result.append(window_text)
+    windows = []
+    win32gui.EnumWindows(enum_handler, windows)
+    return windows
 
-def is_target_person(landmarks):
-    """判斷是否為目標人像"""
-    # 這裡可以根據具體條件來判斷，例如檢查某些關鍵點的位置或距離
-    # 這裡假設如果鼻子和左眼的距離小於某個閾值，則認為是目標人像
-    nose = landmarks.landmark[mp_pose.PoseLandmark.NOSE]
-    left_eye = landmarks.landmark[mp_pose.PoseLandmark.LEFT_EYE]
-    distance = ((nose.x - left_eye.x) ** 2 + (nose.y - left_eye.y) ** 2) ** 0.5
-    return distance < 0.1  # 根據需要調整閾值
+def perform_detection(model, image):
+    # 將圖像轉換為 (batch, channel, height, width)
+    image_resized = cv2.resize(image, (640, 640))  # 確保圖像大小一致
+    image_tensor = torch.from_numpy(image_resized).permute(2, 0, 1).unsqueeze(0).float() / 255.0  # 歸一化到 0.0 到 1.0
 
-def set_cursor_pos(x, y):
-    """使用 mouse_event 設置滑鼠位置"""
-    ctypes.windll.user32.SetCursorPos(x, y)
+    # 將圖像轉移到 GPU（如果可用）
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    image_tensor = image_tensor.to(device)
+
+    # 執行檢測
+    results = model(image_tensor)
+
+    # 獲取帶有邊界框的圖像
+    annotated_image = image.copy()
+
+    # 檢查是否有檢測到物體
+    if len(results) > 0:
+        for result in results:  # 迭代每個檢測到的物體
+            if result.boxes.xyxy.shape[0] > 0:  # 檢查是否有檢測到的框
+                x1, y1, x2, y2, conf, cls = result.boxes.xyxy[0].tolist() + result.boxes.conf[0].tolist() + result.boxes.cls[0].tolist()
+                x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
+                cv2.rectangle(annotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)  # 畫出邊界框
+
+                # 確保類別索引存在於 model.names 中
+                if int(cls) in model.names:
+                    label = f'{model.names[int(cls)]}: {conf:.2f}'
+                else:
+                    label = f'Class {int(cls)}: {conf:.2f}'
+
+                cv2.putText(annotated_image, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+    return annotated_image
+
+def load_model():
+    # 定義和初始化 YOLOv8 模型
+    model_path = r'\..\yolov8\runs\detect\train\weights\best.pt'  # 更新為你的模型權重文件的正確路徑
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"{model_path} does not exist")
+    model = YOLO(model_path)  # 使用 YOLOv8n 模型，你可以根據需要選擇其他版本
+    return model
 
 def main():
-    global success_count
+    # 加載模型
+    try:
+        model = load_model()
+    except FileNotFoundError as e:
+        print(e)
+        return
+
+    # 列出所有可選擇的應用程式窗口
+    windows = list_windows()
+    print("可選擇的應用程式窗口:")
+    for i, window in enumerate(windows):
+        print(f"{i + 1}. {window}")
+
+    # 輸入應用程式名稱
+    window_index = int(input("請輸入應用程式編號: ")) - 1
+    window_name = windows[window_index]
+
     while True:
-        # 捕捉螢幕畫面
-        image = capture_screenshot()
-        
-        # 檢測人體姿態
-        landmarks, head_points = detect_pose(image)
-        is_target = is_target_person(landmarks) if landmarks else False
-        output_image, target_position = draw_pose(image, landmarks, head_points, is_target)
-        
-        # 儲存結果圖像
-        output_path = "testtest_pose.png"
-        cv2.imwrite(output_path, output_image)
-        print(f"人體架構檢測結果已保存為 '{output_path}'")
-        
-        # 獲取螢幕解析度
-        screen_width = ctypes.windll.user32.GetSystemMetrics(0)
-        screen_height = ctypes.windll.user32.GetSystemMetrics(1)
-        image_height, image_width, _ = image.shape
-        screen_points = convert_to_screen_coordinates(head_points, screen_width, screen_height, image_width, image_height)
-        
-        print("頭部關鍵點座標（螢幕像素）：")
-        for point, coords in screen_points.items():
-            print(f"{point}: {coords}")
-        
-        # 如果找到目標人像，移動鼠標到頭部中心點
-        if target_position:
-            # 更新成功辨識次數
-            success_count += 1
-            
-            # 確保 test 資料夾存在
-            if not os.path.exists("test"):
-                os.makedirs("test")
-            
-            # 儲存結果圖像
-            output_path = f"./test/test/test{success_count}.png"
-            cv2.imwrite(output_path, output_image)
-            print(f"人體架構檢測結果已保存為 '{output_path}'")
-            
-            screen_x = int(target_position[0] * screen_width / image_width)
-            screen_y = int(target_position[1] * screen_height / image_height)
-            print(f"移動鼠標到螢幕座標: ({screen_x}, {screen_y})")
-            set_cursor_pos(screen_x, screen_y)  # 第一次滑動
-            print(f"鼠標已移動到目標人像的頭部中心點: ({screen_x}, {screen_y})")
-            set_cursor_pos(screen_x, screen_y)  # 第二次滑動
-            print(f"鼠標再次移動到目標人像的頭部中心點: ({screen_x}, {screen_y})")
-        
-        # 等待一段時間後再次捕捉
-        time.sleep(0.1)  # 每隔0.1秒捕捉一次
+        start_time = time.time()
+
+        # 截圖應用程式窗口
+        screenshot = capture_window(window_name)
+
+        # 執行檢測
+        annotated_image = perform_detection(model, screenshot)
+
+        # 顯示結果
+        cv2.imshow('YOLOv8 Detection', annotated_image)
+
+        # 計算並顯示 FPS
+        end_time = time.time()
+        fps = 1 / (end_time - start_time)
+        print(f"FPS: {fps:.2f}")
+
+        # 按 'q' 鍵退出
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main()
