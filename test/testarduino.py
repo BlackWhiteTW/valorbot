@@ -34,11 +34,19 @@ try:
     # 等待 Arduino 重置完成
     time.sleep(2)
 
-    for i in range(1):
+    for i in range(5):
         # 獲取當前滑鼠位置
         current_position = pyautogui.position()
         target_position = (960, 540)  # 目標位置
-        data = f"({current_position.x},{current_position.y}),({target_position[0]},{target_position[1]})\n"
+
+        # 格式化座標為五位數字
+        current_x_str = f"{current_position.x:05d}"
+        current_y_str = f"{current_position.y:05d}"
+        target_x_str = f"{target_position[0]:05d}"
+        target_y_str = f"{target_position[1]:05d}"
+
+        data = f"({current_x_str},{current_y_str}),({target_x_str},{target_y_str})\n"
+        print(f"Sending data to Arduino: {data}")
         ser.write(data.encode())
 
         # 讀取 Arduino 回傳的訊息
@@ -49,7 +57,7 @@ try:
             print(f"Unexpected response from Arduino: {response}")
 
         # 等待一段時間以確保每次移動都能被正確處理
-        time.sleep(0.1)
+        time.sleep(1)
 
 finally:
     # 確保在程式結束時關閉串口
